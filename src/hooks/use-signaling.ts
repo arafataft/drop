@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { SignalingConnection } from "@/services/signaling";
 import { usePeerStore } from "@/store/peer-store";
 import { useSettingsStore } from "@/store/settings-store";
@@ -19,6 +19,7 @@ interface UseSignalingReturn {
   disconnect: () => void;
   signalingRef: React.MutableRefObject<SignalingConnection | null>;
   keyPairRef: React.MutableRefObject<CryptoKeyPair | null>;
+  connectionError: string | null;
 }
 
 export function useSignaling(
@@ -27,6 +28,7 @@ export function useSignaling(
   const signalingRef = useRef<SignalingConnection | null>(null);
   const keyPairRef = useRef<CryptoKeyPair | null>(null);
   const fingerprintRef = useRef<string | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const {
     setSelfId,
@@ -61,54 +63,62 @@ export function useSignaling(
   const connect = useCallback(async () => {
     if (signalingRef.current?.isConnected) return;
 
-    // Generate key pair
-    await upgradeToEd25519IfSupported();
-    const keyPair = await generateKeyPair();
-    keyPairRef.current = keyPair;
+    try {
+      setConnectionError(null);
 
-    const info = await buildClientInfo(keyPair);
+      // Generate key pair
+      await upgradeToEd25519IfSupported();
+      const keyPair = await generateKeyPair();
+      keyPairRef.current = keyPair;
 
-    const connection = await SignalingConnection.connect(info, {
-      onMessage: (message: WsServerMessage) => {
-        switch (message.type) {
-          case "HELLO":
-            setSelfId(message.client.id);
-            setSelfInfo(message.client);
-            setPeers(message.peers);
-            break;
-          case "JOIN":
-            addPeer(message.peer);
-            break;
-          case "LEFT":
-            removePeer(message.peerId);
-            break;
-          case "UPDATE":
-            updatePeer(message.peer);
-            break;
-          case "OFFER":
-            onOffer?.(message);
-            break;
-          case "ANSWER":
-            // Handled by signaling connection internally
-            break;
-          case "ERROR":
-            console.error("Signaling error:", message.message);
-            break;
-        }
-      },
-      onClose: () => {
-        setConnected(false);
-        clearPeers();
-        signalingRef.current = null;
-      },
-      generateNewInfo: async () => {
-        if (!keyPairRef.current) throw new Error("No key pair");
-        return buildClientInfo(keyPairRef.current);
-      },
-    });
+      const info = await buildClientInfo(keyPair);
 
-    signalingRef.current = connection;
-    setConnected(true);
+      const connection = await SignalingConnection.connect(info, {
+        onMessage: (message: WsServerMessage) => {
+          switch (message.type) {
+            case "HELLO":
+              setSelfId(message.client.id);
+              setSelfInfo(message.client);
+              setPeers(message.peers);
+              break;
+            case "JOIN":
+              addPeer(message.peer);
+              break;
+            case "LEFT":
+              removePeer(message.peerId);
+              break;
+            case "UPDATE":
+              updatePeer(message.peer);
+              break;
+            case "OFFER":
+              onOffer?.(message);
+              break;
+            case "ANSWER":
+              // Handled by signaling connection internally
+              break;
+            case "ERROR":
+              console.error("Signaling error:", message.message);
+              break;
+          }
+        },
+        onClose: () => {
+          setConnected(false);
+          clearPeers();
+          signalingRef.current = null;
+        },
+        generateNewInfo: async () => {
+          if (!keyPairRef.current) throw new Error("No key pair");
+          return buildClientInfo(keyPairRef.current);
+        },
+      });
+
+      signalingRef.current = connection;
+      setConnected(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Connection failed";
+      setConnectionError(message);
+      setConnected(false);
+    }
   }, [buildClientInfo, setSelfId, setSelfInfo, setConnected, addPeer, removePeer, updatePeer, setPeers, clearPeers, onOffer]);
 
   const disconnect = useCallback(() => {
@@ -126,5 +136,5 @@ export function useSignaling(
     };
   }, []);
 
-  return { connect, disconnect, signalingRef, keyPairRef };
+  return { connect, disconnect, signalingRef, keyPairRef, connectionError };
 }

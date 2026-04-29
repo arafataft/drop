@@ -49,13 +49,14 @@ export default function Home() {
     [peers]
   );
 
-  const { connect, disconnect, signalingRef, keyPairRef } = useSignaling(handleOffer);
+  const { connect, disconnect, signalingRef, keyPairRef, connectionError } = useSignaling(handleOffer);
   const { send, receive } = useFileTransfer();
 
-  // Auto-connect on mount
+  // Auto-connect once on mount
   useEffect(() => {
-    connect();
-  }, [connect]);
+    connect().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSend = useCallback(
     async (peer: ClientInfo) => {
@@ -118,6 +119,20 @@ export default function Home() {
             />
           </div>
         </div>
+
+        {/* Error Banner */}
+        {connectionError && (
+          <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+            <p className="font-medium">Connection failed</p>
+            <p className="text-red-500 mt-0.5">{connectionError}</p>
+            <button
+              onClick={() => connect()}
+              className="mt-2 text-xs px-3 py-1 rounded-md border border-red-300 text-red-600 hover:bg-red-100 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {/* Peer List */}
         <section className="mb-6">

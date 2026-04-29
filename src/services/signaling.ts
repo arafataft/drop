@@ -42,12 +42,14 @@ export class SignalingConnection {
       const encoded = encodeStringToBase64(JSON.stringify(this.info));
       const wsUrl = `${url}?d=${encoded}`;
 
+      let settled = false;
       this.ws = new WebSocket(wsUrl);
       this.closePromise = new Promise<void>((r) => {
         this.closeResolve = r;
       });
 
       this.ws.onopen = () => {
+        settled = true;
         this.startPing();
         this.startFingerprintUpdate();
         resolve();
@@ -71,7 +73,10 @@ export class SignalingConnection {
       };
 
       this.ws.onerror = () => {
-        reject(new Error("WebSocket connection error"));
+        if (!settled) {
+          settled = true;
+          reject(new Error("WebSocket connection error"));
+        }
       };
 
       this.ws.onclose = () => {
@@ -84,6 +89,10 @@ export class SignalingConnection {
         this.answerResolvers.clear();
         this.callbacks.onClose();
         if (this.closeResolve) this.closeResolve();
+        if (!settled) {
+          settled = true;
+          reject(new Error("WebSocket connection closed before open"));
+        }
       };
     });
   }
