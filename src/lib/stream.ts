@@ -1,15 +1,15 @@
 import { CHUNK_SIZE, MAX_BUFFERED_AMOUNT } from "./constants";
 
-export class StreamController {
+export class StreamController implements AsyncIterableIterator<string | ArrayBuffer> {
   private messages: (string | ArrayBuffer)[] = [];
-  private resolve: ((value: IteratorResult<string | ArrayBuffer>) => void) | null = null;
+  private resolveNext: ((value: IteratorResult<string | ArrayBuffer>) => void) | null = null;
   private done = false;
 
   push(message: string | ArrayBuffer): void {
     if (this.done) return;
-    if (this.resolve) {
-      const resolve = this.resolve;
-      this.resolve = null;
+    if (this.resolveNext) {
+      const resolve = this.resolveNext;
+      this.resolveNext = null;
       resolve({ value: message, done: false });
     } else {
       this.messages.push(message);
@@ -18,26 +18,27 @@ export class StreamController {
 
   close(): void {
     this.done = true;
-    if (this.resolve) {
-      const resolve = this.resolve;
-      this.resolve = null;
+    if (this.resolveNext) {
+      const resolve = this.resolveNext;
+      this.resolveNext = null;
       resolve({ value: undefined, done: true });
     }
   }
 
-  async *[Symbol.asyncIterator](): AsyncIterableIterator<string | ArrayBuffer> {
-    while (true) {
-      if (this.messages.length > 0) {
-        yield this.messages.shift()!;
-        continue;
-      }
-      if (this.done) return;
-      const result = await new Promise<IteratorResult<string | ArrayBuffer>>((resolve) => {
-        this.resolve = resolve;
-      });
-      if (result.done) return;
-      yield result.value;
+  async next(): Promise<IteratorResult<string | ArrayBuffer>> {
+    if (this.messages.length > 0) {
+      return { value: this.messages.shift()!, done: false };
     }
+    if (this.done) {
+      return { value: undefined, done: true };
+    }
+    return new Promise<IteratorResult<string | ArrayBuffer>>((resolve) => {
+      this.resolveNext = resolve;
+    });
+  }
+
+  [Symbol.asyncIterator](): AsyncIterableIterator<string | ArrayBuffer> {
+    return this;
   }
 }
 
