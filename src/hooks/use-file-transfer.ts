@@ -89,7 +89,7 @@ export function useFileTransfer(): UseFileTransferReturn {
           fileDtoList,
           fileMap,
           targetId,
-          signingKey: keyPair.privateKey,
+          keyPair,
           publicKeyPem: "",
           pin: pin || undefined,
           onFileProgress: (sid, fileId, bytes, total) => {
@@ -124,7 +124,7 @@ export function useFileTransfer(): UseFileTransferReturn {
         await receiveFiles({
           signaling,
           offer,
-          signingKey: keyPair.privateKey,
+          keyPair,
           publicKeyPem: "",
           pin: pin || undefined,
           selectFiles: async (files) => {

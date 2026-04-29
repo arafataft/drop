@@ -56,7 +56,7 @@ interface SendFilesOptions {
   fileDtoList: FileDto[];
   fileMap: Map<string, File>;
   targetId: string;
-  signingKey: CryptoKey;
+  keyPair: CryptoKeyPair;
   publicKeyPem: string;
   pin?: string;
   onPin?: () => Promise<string>;
@@ -70,7 +70,7 @@ export async function sendFiles(options: SendFilesOptions): Promise<void> {
     fileDtoList,
     fileMap,
     targetId,
-    signingKey,
+    keyPair,
     publicKeyPem,
     pin,
     onPin,
@@ -115,7 +115,7 @@ export async function sendFiles(options: SendFilesOptions): Promise<void> {
     if (peerNonceMsg.type !== "nonce") throw new Error("Expected nonce message");
 
     // Step 3: Send token (signed with our nonce)
-    const token = await generateClientToken(signingKey, nonce);
+    const token = await generateClientToken(keyPair, nonce);
     dc.send(JSON.stringify({ type: "token", token } as RtcTokenMessage));
 
     // Step 4: Receive and verify peer's token
@@ -181,7 +181,7 @@ interface ReceiveFilesOptions {
   signaling: SignalingConnection;
   stunServers?: string[];
   offer: { sessionId: string; sdp: string; target: string };
-  signingKey: CryptoKey;
+  keyPair: CryptoKeyPair;
   publicKeyPem: string;
   pin?: string;
   onPin?: () => Promise<string>;
@@ -194,7 +194,7 @@ export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> 
     signaling,
     stunServers = STUN_SERVERS,
     offer,
-    signingKey,
+    keyPair,
     pin,
     onPin,
     selectFiles,
@@ -248,7 +248,7 @@ export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> 
     if (peerTokenMsg.type !== "token") throw new Error("Expected token message");
 
     // Step 4: Send our token
-    const token = await generateClientToken(signingKey, ourNonce);
+    const token = await generateClientToken(keyPair, ourNonce);
     dc.send(JSON.stringify({ type: "token", token } as RtcTokenMessage));
 
     // Step 5: PIN verification
@@ -283,7 +283,7 @@ export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> 
       let received = 0;
 
       while (received < fileInfo.size) {
-        const msg = await stream[Symbol.asyncIterator]().next();
+        const msg = await stream.next();
         if (msg.done) throw new Error("Connection closed during file transfer");
 
         if (typeof msg.value === "string") {

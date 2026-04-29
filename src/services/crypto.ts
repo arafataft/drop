@@ -87,7 +87,7 @@ function getSignMethod(): CryptoMethod {
 }
 
 async function hashData(data: Uint8Array): Promise<Uint8Array> {
-  const hash = await crypto.subtle.digest("SHA-256", data);
+  const hash = await crypto.subtle.digest("SHA-256", data as BufferSource);
   return new Uint8Array(hash);
 }
 
@@ -98,12 +98,12 @@ function generateSalt(): Uint8Array {
 }
 
 async function signData(key: CryptoKey, data: Uint8Array): Promise<Uint8Array> {
-  const sig = await crypto.subtle.sign(getSignAlgorithm(), key, data);
+  const sig = await crypto.subtle.sign(getSignAlgorithm(), key, data as BufferSource);
   return new Uint8Array(sig);
 }
 
 export async function generateClientToken(
-  key: CryptoKey,
+  keyPair: CryptoKeyPair,
   nonce?: string
 ): Promise<string> {
   const hashMethod = getHashMethod();
@@ -111,7 +111,7 @@ export async function generateClientToken(
 
   // Build the data to hash: timestamp or nonce + public key DER + salt
   const timestamp = nonce || Date.now().toString();
-  const publicKeyDer = await getPublicKeyDer(key);
+  const publicKeyDer = await getPublicKeyDer(keyPair.publicKey);
   const salt = generateSalt();
 
   // Concatenate: timestamp + publicKeyDer + salt
@@ -124,7 +124,7 @@ export async function generateClientToken(
   dataToHash.set(salt, timestampBytes.length + publicKeyDer.byteLength);
 
   const hash = await hashData(dataToHash);
-  const signature = await signData(key, hash);
+  const signature = await signData(keyPair.privateKey, hash);
 
   // Token format: hashMethod.hashB64.saltB64.signMethod.signatureB64
   return [
@@ -154,14 +154,14 @@ export async function verifyToken(
     signMethod === "Ed25519" ? "Ed25519" : { name: "RSA-PSS", saltLength: 32 };
 
   try {
-    return crypto.subtle.verify(algorithm, publicKey, signature, hash);
+    return crypto.subtle.verify(algorithm, publicKey, signature as BufferSource, hash as BufferSource);
   } catch {
     return false;
   }
 }
 
-export async function getFingerprint(key: CryptoKey): Promise<string> {
-  const der = await getPublicKeyDer(key);
+export async function getFingerprint(keyPair: CryptoKeyPair): Promise<string> {
+  const der = await getPublicKeyDer(keyPair.publicKey);
   const hash = await crypto.subtle.digest("SHA-256", der);
   const bytes = new Uint8Array(hash);
   // First 8 bytes as hex, colon-separated
