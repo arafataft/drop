@@ -153,6 +153,7 @@ export default function Home() {
         {/* Peer list */}
         <section>
           <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)] mb-3">Nearby</h2>
+          <p className="text-[10px] text-[var(--muted)]/50 mb-3">Devices must be on the same WiFi or local network</p>
           <PeerList peers={peerArray} onSend={handleSend} />
         </section>
 
