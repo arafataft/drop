@@ -6,7 +6,7 @@ export function formatFileSize(bytes: number): string {
   return `${size.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-export function saveFileFromBlob(blob: Blob, fileName: string): void {
+export async function saveFileFromBlob(blob: Blob, fileName: string): Promise<void> {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -15,4 +15,7 @@ export function saveFileFromBlob(blob: Blob, fileName: string): void {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+  
+  // Wait a short time to allow mobile browsers to handle consecutive download prompts
+  await new Promise((resolve) => setTimeout(resolve, 500));
 }

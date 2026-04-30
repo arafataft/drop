@@ -68,6 +68,7 @@ interface SendFilesOptions {
   publicKeyPem: string;
   pin?: string;
   onPin?: () => Promise<string>;
+  onAccept?: () => void;
   onFileProgress?: (sessionId: string, fileId: string, bytesTransferred: number, total: number) => void;
   abortSignal?: AbortSignal;
 }
@@ -83,6 +84,7 @@ export async function sendFiles(options: SendFilesOptions): Promise<void> {
     publicKeyPem,
     pin,
     onPin,
+    onAccept,
     onFileProgress,
     abortSignal,
   } = options;
@@ -144,12 +146,16 @@ export async function sendFiles(options: SendFilesOptions): Promise<void> {
     };
   });
 
+  const safeSend = (data: string) => {
+    if (dc.readyState === "open") dc.send(data);
+  };
+
   const stream = createStreamController(dc);
 
   try {
     // Step 1: Send nonce
     const nonce = generateNonce();
-    dc.send(JSON.stringify({ type: "nonce", nonce } as RtcNonceMessage));
+    safeSend(JSON.stringify({ type: "nonce", nonce } as RtcNonceMessage));
 
     // Step 2: Receive peer's nonce
     const peerNonceMsg = JSON.parse(await readString(stream)) as RtcNonceMessage;
@@ -157,33 +163,47 @@ export async function sendFiles(options: SendFilesOptions): Promise<void> {
 
     // Step 3: Send token (signed with our nonce)
     const token = await generateClientToken(keyPair, nonce);
-    dc.send(JSON.stringify({ type: "token", token } as RtcTokenMessage));
+    safeSend(JSON.stringify({ type: "token", token } as RtcTokenMessage));
 
     // Step 4: Receive and verify peer's token
     const peerTokenMsg = JSON.parse(await readString(stream)) as RtcTokenMessage;
     if (peerTokenMsg.type !== "token") throw new Error("Expected token message");
 
-    // Step 5: PIN verification
-    if (pin) {
-      dc.send(JSON.stringify({ type: "pin-required" } as RtcPinRequiredMessage));
-      const pinMsg = JSON.parse(await readString(stream)) as RtcPinMessage;
-      if (pinMsg.type !== "pin") throw new Error("Expected pin message");
-      if (pinMsg.pin !== pin) {
-        dc.send(JSON.stringify({ type: "file-status", status: "error", message: "Invalid PIN" } as RtcFileStatusMessage));
-        throw new Error("Invalid PIN");
+    // Step 5: PIN verification (Sender side)
+    // We don't send pin-required first, we just wait to see if receiver sends pin-required
+    // We use a small timeout to see if receiver wants a pin
+    const pinPromise = new Promise<RtcMessage | null>(async (resolve) => {
+      try {
+        // Stream next will give us the next message
+        const msg = JSON.parse(await readString(stream)) as RtcMessage;
+        resolve(msg);
+      } catch {
+        resolve(null);
       }
+    });
+    
+    // We also send file list. The receiver will process pin-required BEFORE file-list.
+    safeSend(JSON.stringify({ type: "file-list", files: fileDtoList } as RtcFileListMessage));
+    
+    const nextMsg = await pinPromise;
+    if (nextMsg?.type === "pin-required") {
+      const pinToUse = pin || (onPin ? await onPin() : "");
+      safeSend(JSON.stringify({ type: "pin", pin: pinToUse } as RtcPinMessage));
+    } else if (nextMsg && nextMsg.type !== "file-accept" && nextMsg.type !== "file-reject") {
+       throw new Error("Unexpected message");
     }
 
-    // Step 6: Send file list
-    dc.send(JSON.stringify({ type: "file-list", files: fileDtoList } as RtcFileListMessage));
-
     // Step 7: Wait for file acceptance
-    const acceptMsg = JSON.parse(await readString(stream));
+    const acceptMsg = nextMsg?.type === "file-accept" || nextMsg?.type === "file-reject" 
+      ? nextMsg 
+      : JSON.parse(await readString(stream));
     if (acceptMsg.type === "file-reject") {
       pc.close();
       return;
     }
     if (acceptMsg.type !== "file-accept") throw new Error("Expected file-accept or file-reject");
+    
+    onAccept?.();
 
     const acceptedIds = new Set(acceptMsg.fileIds as string[]);
 
@@ -209,13 +229,30 @@ export async function sendFiles(options: SendFilesOptions): Promise<void> {
       }
 
       // Send delimiter
-      dc.send("0");
+      safeSend("0");
 
       onFileProgress?.(sessionId, fileDto.id, fileDto.size, fileDto.size);
     }
 
     // Step 9: Send completion status
-    dc.send(JSON.stringify({ type: "file-status", status: "finished" } as RtcFileStatusMessage));
+    safeSend(JSON.stringify({ type: "file-status", status: "finished" } as RtcFileStatusMessage));
+
+    // Wait for the buffer to drain before closing the connection
+    if (dc.bufferedAmount > 0) {
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          dc.onbufferedamountlow = null;
+          resolve();
+        }, 10000); // 10s fallback timeout
+        
+        dc.bufferedAmountLowThreshold = 0;
+        dc.onbufferedamountlow = () => {
+          clearTimeout(timeout);
+          dc.onbufferedamountlow = null;
+          resolve();
+        };
+      });
+    }
   } catch (err) {
     if (abortSignal?.aborted) {
       throw new Error("Transfer cancelled");
@@ -266,17 +303,18 @@ export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> 
   };
   abortSignal?.addEventListener("abort", onAbort);
 
-  // Set up data channel promise BEFORE setting remote description
   const dcPromise = new Promise<RTCDataChannel>((resolve, reject) => {
     if (abortSignal?.aborted) return reject(new Error("Transfer cancelled"));
     const abortHandler = () => reject(new Error("Transfer cancelled"));
     abortSignal?.addEventListener("abort", abortHandler);
 
+    let timeoutId: ReturnType<typeof setTimeout>;
     pc.ondatachannel = (event) => {
+      clearTimeout(timeoutId);
       abortSignal?.removeEventListener("abort", abortHandler);
       resolve(event.channel);
     };
-    setTimeout(() => {
+    timeoutId = setTimeout(() => {
       abortSignal?.removeEventListener("abort", abortHandler);
       reject(new Error("Timeout waiting for data channel"));
     }, 30000);
@@ -321,6 +359,10 @@ export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> 
     };
   });
 
+  const safeSend = (data: string) => {
+    if (dc.readyState === "open") dc.send(data);
+  };
+
   const stream = createStreamController(dc);
 
   try {
@@ -330,7 +372,7 @@ export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> 
 
     // Step 2: Send our nonce
     const ourNonce = generateNonce();
-    dc.send(JSON.stringify({ type: "nonce", nonce: ourNonce } as RtcNonceMessage));
+    safeSend(JSON.stringify({ type: "nonce", nonce: ourNonce } as RtcNonceMessage));
 
     // Step 3: Receive and verify token
     const peerTokenMsg = JSON.parse(await readString(stream)) as RtcTokenMessage;
@@ -338,14 +380,15 @@ export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> 
 
     // Step 4: Send our token
     const token = await generateClientToken(keyPair, ourNonce);
-    dc.send(JSON.stringify({ type: "token", token } as RtcTokenMessage));
+    safeSend(JSON.stringify({ type: "token", token } as RtcTokenMessage));
 
-    // Step 5: PIN verification
+    // Step 5: PIN verification (Receiver Side)
     if (pin) {
-      const pinRequiredMsg = JSON.parse(await readString(stream)) as RtcPinRequiredMessage;
-      if (pinRequiredMsg.type === "pin-required") {
-        const pinToUse = pin || (onPin ? await onPin() : "");
-        dc.send(JSON.stringify({ type: "pin", pin: pinToUse } as RtcPinMessage));
+      safeSend(JSON.stringify({ type: "pin-required" } as RtcPinRequiredMessage));
+      const pinMsg = JSON.parse(await readString(stream)) as RtcPinMessage;
+      if (pinMsg.type !== "pin" || pinMsg.pin !== pin) {
+        safeSend(JSON.stringify({ type: "file-status", status: "error", message: "Invalid PIN" } as RtcFileStatusMessage));
+        throw new Error("Invalid PIN");
       }
     }
 
@@ -357,12 +400,12 @@ export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> 
     const selectedIds = await selectFiles(fileListMsg.files);
 
     if (selectedIds.length === 0) {
-      dc.send(JSON.stringify({ type: "file-reject" } as { type: "file-reject" }));
+      safeSend(JSON.stringify({ type: "file-reject" } as { type: "file-reject" }));
       pc.close();
       return;
     }
 
-    dc.send(JSON.stringify({ type: "file-accept", fileIds: selectedIds } as RtcFileAcceptMessage));
+    safeSend(JSON.stringify({ type: "file-accept", fileIds: selectedIds } as RtcFileAcceptMessage));
 
     // Step 8: Receive files
     const selectedFiles = fileListMsg.files.filter((f) => selectedIds.includes(f.id));
@@ -401,7 +444,7 @@ export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> 
       }
 
       const blob = new Blob(chunks, { type: fileInfo.mimeType });
-      saveFileFromBlob(blob, fileInfo.name);
+      await saveFileFromBlob(blob, fileInfo.name);
       
       // Clear chunks from memory to help Garbage Collection
       chunks.length = 0;

@@ -4,7 +4,7 @@ import { useCallback, useRef } from "react";
 import { sendFiles, receiveFiles } from "@/services/webrtc";
 import { useTransferStore } from "@/store/transfer-store";
 import { useSettingsStore } from "@/store/settings-store";
-import type { FileDto } from "@/types/transfer";
+import type { FileDto, FileProgress } from "@/types/transfer";
 import type { SignalingConnection } from "@/services/signaling";
 import type { WsServerMessage } from "@/types/signaling";
 
@@ -90,7 +90,7 @@ export function useFileTransfer(): UseFileTransferReturn {
       const abortController = new AbortController();
       controllersRef.current.set(sessionId, abortController);
 
-      const initialProgress = new Map<string, any>();
+      const initialProgress = new Map<string, FileProgress>();
       fileDtoList.forEach((f) => {
         initialProgress.set(f.id, {
           fileId: f.id,
@@ -121,8 +121,11 @@ export function useFileTransfer(): UseFileTransferReturn {
           keyPair,
           publicKeyPem: "",
           pin: pin || undefined,
-          onFileProgress: (sid, fileId, bytes, total) => {
-            updateFileProgress(sid, {
+          onAccept: () => {
+            updateSessionStatus(sessionId, "in-progress");
+          },
+          onFileProgress: (_sid, fileId, bytes, total) => {
+            updateFileProgress(sessionId, {
               fileId,
               fileName: fileDtoList.find((f) => f.id === fileId)?.name ?? "",
               fileSize: total,
@@ -179,7 +182,11 @@ export function useFileTransfer(): UseFileTransferReturn {
               return fileSelectCbRef.current(files);
             }
             // Default: accept all
-            return files.map((f) => f.id);
+            const acceptedIds = files.map((f) => f.id);
+            if (acceptedIds.length > 0) {
+              updateSessionStatus(sessionId, "in-progress");
+            }
+            return acceptedIds;
           },
           onFileProgress: (sid, fileId, bytes, total) => {
             const fileName = fileList.find((f) => f.id === fileId)?.name ?? "";
@@ -201,7 +208,7 @@ export function useFileTransfer(): UseFileTransferReturn {
         controllersRef.current.delete(sessionId);
       }
     },
-    [pin, updateFileProgress, updateSessionStatus]
+    [pin, updateFileProgress, updateSessionStatus, addSession]
   );
 
   return {

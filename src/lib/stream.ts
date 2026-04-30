@@ -18,11 +18,16 @@ export class StreamController implements AsyncIterableIterator<string | ArrayBuf
 
   close(): void {
     this.done = true;
+    this.messages = []; // Clear queue to avoid memory leak
     if (this.resolveNext) {
       const resolve = this.resolveNext;
       this.resolveNext = null;
       resolve({ value: undefined, done: true });
     }
+  }
+
+  clear(): void {
+    this.messages = [];
   }
 
   async next(): Promise<IteratorResult<string | ArrayBuffer>> {
@@ -63,10 +68,23 @@ export async function sendChunks(
   let offset = 0;
   while (offset < data.byteLength) {
     if (channel.bufferedAmount > MAX_BUFFERED_AMOUNT) {
-      await new Promise<void>((resolve) => {
+      await new Promise<void>((resolve, reject) => {
+        if (channel.readyState !== "open") {
+          reject(new Error("Channel closed during send"));
+          return;
+        }
+
+        const handleClose = () => {
+          channel.onbufferedamountlow = null;
+          channel.removeEventListener("close", handleClose);
+          reject(new Error("Channel closed while waiting for buffer to drain"));
+        };
+        channel.addEventListener("close", handleClose);
+
         channel.bufferedAmountLowThreshold = CHUNK_SIZE;
         channel.onbufferedamountlow = () => {
           channel.onbufferedamountlow = null;
+          channel.removeEventListener("close", handleClose);
           resolve();
         };
       });

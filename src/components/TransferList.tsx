@@ -11,6 +11,8 @@ interface TransferListProps {
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   "in-progress": { label: "Transferring", color: "bg-[var(--accent)]/20 text-[var(--accent)]" },
+  "waiting-for-accept": { label: "Waiting", color: "bg-blue-500/20 text-blue-400" },
+  "waiting-for-pin": { label: "PIN Required", color: "bg-purple-500/20 text-purple-400" },
   completed: { label: "Done", color: "bg-[var(--success)]/20 text-[var(--success)]" },
   failed: { label: "Failed", color: "bg-[var(--danger)]/20 text-[var(--danger)]" },
   rejected: { label: "Rejected", color: "bg-yellow-500/20 text-yellow-400" },
