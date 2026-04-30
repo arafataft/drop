@@ -452,10 +452,20 @@ export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> 
       onFileProgress?.(sessionId, fileInfo.id, fileInfo.size, fileInfo.size);
     }
 
-    // Wait for completion status
-    const statusMsg = JSON.parse(await readString(stream)) as RtcFileStatusMessage;
-    if (statusMsg.type === "file-status" && statusMsg.status === "error") {
-      throw new Error(statusMsg.message || "Remote error during transfer");
+    // Wait for completion status (optional — sender may close before we read it)
+    try {
+      const statusMsg = JSON.parse(await readString(stream)) as RtcFileStatusMessage;
+      if (statusMsg.type === "file-status" && statusMsg.status === "error") {
+        throw new Error(statusMsg.message || "Remote error during transfer");
+      }
+    } catch (statusErr) {
+      // If it's a stream-ended error, it just means the sender closed after sending.
+      // All files were already received and saved, so this is fine.
+      if (statusErr instanceof Error && statusErr.message.includes("Stream ended")) {
+        // Graceful close — all files received successfully
+      } else {
+        throw statusErr;
+      }
     }
   } catch (err) {
     if (abortSignal?.aborted) {

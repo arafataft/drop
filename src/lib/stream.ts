@@ -18,7 +18,8 @@ export class StreamController implements AsyncIterableIterator<string | ArrayBuf
 
   close(): void {
     this.done = true;
-    this.messages = []; // Clear queue to avoid memory leak
+    // Do NOT clear messages here — queued messages must be consumable after close.
+    // Use clear() explicitly to discard (e.g. on cancel/abort).
     if (this.resolveNext) {
       const resolve = this.resolveNext;
       this.resolveNext = null;
