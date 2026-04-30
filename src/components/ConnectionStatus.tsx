@@ -2,33 +2,37 @@
 
 interface ConnectionStatusProps {
   isConnected: boolean;
-  onConnect: () => void;
-  onDisconnect: () => void;
+  onReconnect: () => void;
 }
 
-export function ConnectionStatus({ isConnected, onConnect, onDisconnect }: ConnectionStatusProps) {
+export function ConnectionStatus({ isConnected, onReconnect }: ConnectionStatusProps) {
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex items-center gap-2">
-        <div
-          className={`w-2.5 h-2.5 rounded-full ${
-            isConnected ? "bg-green-500" : "bg-gray-400"
-          }`}
-        />
-        <span className="text-sm text-gray-600">
-          {isConnected ? "Connected" : "Disconnected"}
-        </span>
-      </div>
-      <button
-        onClick={isConnected ? onDisconnect : onConnect}
-        className={`text-sm px-3 py-1 rounded-md border transition-colors ${
-          isConnected
-            ? "border-red-300 text-red-600 hover:bg-red-50"
-            : "border-blue-300 text-blue-600 hover:bg-blue-50"
+    <button
+      onClick={onReconnect}
+      className="flex items-center gap-2 group"
+      title={isConnected ? "Connected - click to reconnect" : "Disconnected - click to reconnect"}
+    >
+      <div
+        className={`w-2 h-2 rounded-full transition-colors ${
+          isConnected ? "bg-[var(--success)] animate-pulse-dot" : "bg-[var(--danger)]"
         }`}
+      />
+      <span className="text-xs text-[var(--muted)] hidden sm:inline">
+        {isConnected ? "Connected" : "Offline"}
+      </span>
+      <svg
+        className="w-3.5 h-3.5 text-[var(--muted)] group-hover:text-[var(--foreground)] transition-colors"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={2}
       >
-        {isConnected ? "Disconnect" : "Connect"}
-      </button>
-    </div>
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+        />
+      </svg>
+    </button>
   );
 }

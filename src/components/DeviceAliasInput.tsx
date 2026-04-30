@@ -48,7 +48,7 @@ export function DeviceAliasInput({ alias, onAliasChange }: DeviceAliasInputProps
             setEditing(false);
           }
         }}
-        className="text-sm px-2 py-1 border border-blue-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        className="text-sm px-2.5 py-1 rounded-lg bg-[var(--card)] border border-[var(--accent)] text-[var(--foreground)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] w-28"
         maxLength={32}
       />
     );
@@ -57,8 +57,8 @@ export function DeviceAliasInput({ alias, onAliasChange }: DeviceAliasInputProps
   return (
     <button
       onClick={() => setEditing(true)}
-      className="text-sm px-2 py-1 rounded-md hover:bg-gray-100 text-gray-700 transition-colors"
-      title="Click to edit alias"
+      className="text-sm px-2.5 py-1 rounded-lg hover:bg-[var(--card)] text-[var(--foreground)] transition-colors font-medium"
+      title="Click to edit name"
     >
       {alias}
     </button>

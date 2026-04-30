@@ -23,16 +23,14 @@ export default function Home() {
     peerAlias: string;
   } | null>(null);
   const [incomingFiles, setIncomingFiles] = useState<FileDto[]>([]);
-  const [fileSelectResolve, setFileSelectResolve] = useState<((ids: string[]) => void) | null>(null);
 
-  const { alias, setAlias, initAlias } = useSettingsStore();
+  const { alias, setAlias } = useSettingsStore();
   const [mounted, setMounted] = useState(false);
 
-  // Initialize alias and mark client-side mount
   useEffect(() => {
-    initAlias();
     setMounted(true);
-  }, [initAlias]);
+  }, []);
+
   const { peers, isConnected } = usePeerStore();
   const sessionsMap = useTransferStore((s) => s.sessions);
   const sessions = Array.from(sessionsMap.values());
@@ -58,6 +56,11 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleReconnect = useCallback(async () => {
+    disconnect();
+    await connect();
+  }, [connect, disconnect]);
+
   const handleSend = useCallback(
     async (peer: ClientInfo) => {
       setSelectedPeer(peer);
@@ -81,7 +84,7 @@ export default function Home() {
   );
 
   const handleAcceptIncoming = useCallback(
-    async (fileIds: string[]) => {
+    async (_fileIds: string[]) => {
       if (!incomingOffer || !signalingRef.current || !keyPairRef.current) return;
       setIncomingOffer(null);
 
@@ -99,82 +102,97 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="flex flex-col flex-1 items-center">
-      <main className="flex flex-1 w-full max-w-2xl flex-col py-8 px-4">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">DROP</h1>
-            <p className="text-sm text-gray-500">Peer-to-peer file sharing</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">You are:</span>
-              <DeviceAliasInput alias={mounted ? alias : ""} onAliasChange={setAlias} />
+    <div className="flex flex-col min-h-svh relative">
+      {/* Background orbs */}
+      <div className="orb-green" />
+      <div className="orb-orange" />
+
+      {/* Top bar */}
+      <header className="sticky top-0 z-40 glass-strong border-b border-[var(--glass-border)]">
+        <div className="max-w-2xl mx-auto flex items-center justify-between px-4 h-14">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--accent)] to-purple-500 flex items-center justify-center">
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
             </div>
-            <ConnectionStatus
-              isConnected={isConnected}
-              onConnect={connect}
-              onDisconnect={disconnect}
-            />
+            <h1 className="text-base font-bold text-[var(--foreground)] tracking-tight">DROP</h1>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <DeviceAliasInput alias={mounted ? alias : ""} onAliasChange={setAlias} />
+            <ConnectionStatus isConnected={isConnected} onReconnect={handleReconnect} />
           </div>
         </div>
+      </header>
 
-        {/* Error Banner */}
+      {/* Main content */}
+      <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-6 space-y-6 relative z-10">
+        {/* Error */}
         {connectionError && (
-          <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
-            <p className="font-medium">Connection failed</p>
-            <p className="text-red-500 mt-0.5">{connectionError}</p>
+          <div className="glass p-4 rounded-2xl border-[var(--danger)]/30 animate-fade-in">
+            <p className="text-sm font-medium text-[var(--danger)]">{connectionError}</p>
             <button
-              onClick={() => connect()}
-              className="mt-2 text-xs px-3 py-1 rounded-md border border-red-300 text-red-600 hover:bg-red-100 transition-colors"
+              onClick={handleReconnect}
+              className="mt-2 text-xs px-3 py-1.5 rounded-lg border border-[var(--danger)]/30 text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-colors font-medium"
             >
               Retry
             </button>
           </div>
         )}
 
-        {/* Peer List */}
-        <section className="mb-6">
-          <h2 className="text-sm font-medium text-gray-700 mb-3">Nearby Devices</h2>
-          <PeerList peers={peerArray} onSend={handleSend} />
-        </section>
-
-        {/* File Picker (shown when peer selected) */}
+        {/* File picker (when peer selected) */}
         {selectedPeer && (
-          <section className="mb-6">
+          <section className="animate-fade-in">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-medium text-gray-700">
-                Send to <strong>{selectedPeer.alias}</strong>
-              </h2>
-              <button
-                onClick={() => setSelectedPeer(null)}
-                className="text-xs text-gray-500 hover:text-gray-700"
-              >
-                Cancel
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSelectedPeer(null)}
+                  className="w-7 h-7 rounded-lg glass flex items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                <span className="text-sm text-[var(--muted)]">
+                  Send to <strong className="text-[var(--foreground)]">{selectedPeer.alias}</strong>
+                </span>
+              </div>
             </div>
             <FilePicker onFilesSelected={handleFilesSelected} />
           </section>
         )}
 
-        {/* Transfer List */}
+        {/* Peer list */}
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)] mb-3">Nearby</h2>
+          <PeerList peers={peerArray} onSend={handleSend} />
+        </section>
+
+        {/* Transfers */}
         {sessions.length > 0 && (
-          <section className="mt-6">
+          <section>
             <TransferList sessions={sessions} />
           </section>
         )}
-
-        {/* Incoming Transfer Dialog */}
-        {incomingOffer && (
-          <SessionDialog
-            peerAlias={incomingOffer.peerAlias}
-            files={incomingFiles.length > 0 ? incomingFiles : []}
-            onAccept={handleAcceptIncoming}
-            onReject={handleRejectIncoming}
-          />
-        )}
       </main>
+
+      {/* Footer */}
+      <footer className="glass border-t border-[var(--glass-border)] py-4">
+        <p className="text-center text-[10px] text-[var(--muted)]/40 uppercase tracking-widest">
+          Peer-to-peer &middot; End-to-end &middot; No server storage
+        </p>
+      </footer>
+
+      {/* Incoming transfer dialog */}
+      {incomingOffer && (
+        <SessionDialog
+          peerAlias={incomingOffer.peerAlias}
+          files={incomingFiles.length > 0 ? incomingFiles : []}
+          onAccept={handleAcceptIncoming}
+          onReject={handleRejectIncoming}
+        />
+      )}
     </div>
   );
 }

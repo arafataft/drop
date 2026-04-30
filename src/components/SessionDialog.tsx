@@ -12,38 +12,50 @@ interface SessionDialogProps {
 
 export function SessionDialog({ peerAlias, files, onAccept, onReject }: SessionDialogProps) {
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-lg max-w-md w-full mx-4 overflow-hidden">
-        <div className="p-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Incoming Transfer</h2>
-          <p className="text-sm text-gray-600 mt-1">
-            <strong>{peerAlias}</strong> wants to send you {files.length} file(s):
-          </p>
+    <div className="fixed inset-0 bg-[var(--overlay)] backdrop-blur-md flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="glass-strong rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md overflow-hidden animate-slide-up sm:animate-scale-in">
+        {/* Handle for mobile */}
+        <div className="flex justify-center pt-3 sm:hidden">
+          <div className="w-8 h-1 rounded-full bg-[var(--card-border)]" />
         </div>
 
-        <div className="max-h-64 overflow-y-auto p-4">
+        <div className="p-5 pb-3">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-500 flex items-center justify-center text-white font-bold">
+              {peerAlias.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-[var(--foreground)]">Incoming Transfer</h2>
+              <p className="text-xs text-[var(--muted)]">
+                from <strong className="text-[var(--foreground)]">{peerAlias}</strong>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-h-48 overflow-y-auto px-5 pb-3">
           <ul className="space-y-2">
             {files.map((file) => (
-              <li key={file.id} className="flex justify-between text-sm">
-                <span className="text-gray-700 truncate mr-4">{file.name}</span>
-                <span className="text-gray-500 shrink-0">{formatFileSize(file.size)}</span>
+              <li key={file.id} className="flex items-center justify-between text-sm glass rounded-lg px-3 py-2">
+                <span className="text-[var(--foreground)] truncate mr-3">{file.name}</span>
+                <span className="text-[var(--muted)] shrink-0 text-xs">{formatFileSize(file.size)}</span>
               </li>
             ))}
           </ul>
         </div>
 
-        <div className="flex gap-2 p-4 border-t border-gray-200">
+        <div className="flex gap-2 p-4 border-t border-[var(--glass-border)]">
           <button
             onClick={onReject}
-            className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+            className="flex-1 px-4 py-2.5 text-sm rounded-xl border border-[var(--card-border)] text-[var(--muted)] hover:text-[var(--foreground)] hover:border-[var(--muted)] transition-colors font-medium"
           >
-            Reject
+            Decline
           </button>
           <button
             onClick={() => onAccept(files.map((f) => f.id))}
-            className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex-1 px-4 py-2.5 text-sm rounded-xl bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors font-medium"
           >
-            Accept All
+            Accept
           </button>
         </div>
       </div>
