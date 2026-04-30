@@ -63,6 +63,11 @@ export function useSignaling(
   const connect = useCallback(async () => {
     if (signalingRef.current?.isConnected) return;
 
+    if (!crypto?.subtle) {
+      setConnectionError("Secure context required. Access this app via https:// or localhost.");
+      return;
+    }
+
     try {
       setConnectionError(null);
 

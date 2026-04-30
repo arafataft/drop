@@ -1,6 +1,5 @@
 import type { ClientInfoWithoutId, ClientInfo } from "@/types/peer";
 import type { WsServerMessage, WsClientMessage } from "@/types/signaling";
-import { encodeStringToBase64 } from "@/lib/base64";
 import { PING_INTERVAL, FINGERPRINT_UPDATE_INTERVAL, SIGNALING_URL } from "@/lib/constants";
 
 interface SignalingCallbacks {
@@ -39,26 +38,38 @@ export class SignalingConnection {
 
   private doConnect(url: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const encoded = encodeStringToBase64(JSON.stringify(this.info));
-      const wsUrl = `${url}?d=${encoded}`;
-
       let settled = false;
-      this.ws = new WebSocket(wsUrl);
+      this.ws = new WebSocket(url);
       this.closePromise = new Promise<void>((r) => {
         this.closeResolve = r;
       });
 
       this.ws.onopen = () => {
-        settled = true;
-        this.startPing();
-        this.startFingerprintUpdate();
-        resolve();
+        // Send REGISTER with client info
+        this.ws!.send(JSON.stringify({ type: "REGISTER", info: this.info }));
       };
 
       this.ws.onmessage = (event: MessageEvent) => {
-        if (event.data === "" || event.data == null) return; // pong
+        if (event.data === "" || event.data == null) return;
         try {
           const message: WsServerMessage = JSON.parse(event.data);
+
+          // First message must be HELLO - that's when we're truly connected
+          if (!settled) {
+            if (message.type === "HELLO") {
+              settled = true;
+              this.startPing();
+              this.startFingerprintUpdate();
+              this.callbacks.onMessage(message);
+              resolve();
+              return;
+            }
+            // Any other first message means something is wrong
+            settled = true;
+            reject(new Error("Unexpected message from server"));
+            return;
+          }
+
           if (message.type === "ANSWER") {
             const resolver = this.answerResolvers.get(message.sessionId);
             if (resolver) {
@@ -82,7 +93,6 @@ export class SignalingConnection {
       this.ws.onclose = () => {
         this.stopPing();
         this.stopFingerprintUpdate();
-        // Reject all pending answer promises
         for (const [, resolver] of this.answerResolvers) {
           resolver.reject(new Error("Connection closed"));
         }
