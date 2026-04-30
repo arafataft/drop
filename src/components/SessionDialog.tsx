@@ -21,7 +21,7 @@ export function SessionDialog({ peerAlias, files, onAccept, onReject }: SessionD
 
         <div className="p-5 pb-3">
           <div className="flex items-center gap-3 mb-1">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-500 flex items-center justify-center text-white font-bold">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--accent)] to-rose-400 flex items-center justify-center text-white font-bold">
               {peerAlias.charAt(0).toUpperCase()}
             </div>
             <div>

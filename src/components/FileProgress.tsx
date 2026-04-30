@@ -35,7 +35,7 @@ export function FileProgress({ progress }: FileProgressProps) {
               width: `${percent}%`,
               backgroundImage:
                 progress.status === "in-progress"
-                  ? "linear-gradient(90deg, var(--accent), #a78bfa, var(--accent))"
+                  ? "linear-gradient(90deg, var(--accent), #fb7185, var(--accent))"
                   : undefined,
             }}
           />

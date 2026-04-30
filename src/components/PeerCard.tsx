@@ -15,7 +15,7 @@ export function PeerCard({ peer, onSend }: PeerCardProps) {
       onClick={() => onSend(peer)}
       className="group glass flex items-center gap-3 p-3.5 rounded-2xl hover:border-[var(--accent)] transition-all cursor-pointer animate-scale-in w-full text-left"
     >
-      <div className="w-11 h-11 shrink-0 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-500 flex items-center justify-center text-white text-lg font-bold shadow-md shadow-[var(--accent)]/30 group-hover:shadow-lg group-hover:shadow-[var(--accent)]/40 transition-shadow">
+      <div className="w-11 h-11 shrink-0 rounded-xl bg-gradient-to-br from-[var(--accent)] to-rose-400 flex items-center justify-center text-white text-lg font-bold shadow-md shadow-[var(--accent)]/30 group-hover:shadow-lg group-hover:shadow-[var(--accent)]/40 transition-shadow">
         {initial}
       </div>
       <div className="flex-1 min-w-0">
