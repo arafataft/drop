@@ -6,6 +6,7 @@ import { useTransferStore } from "@/store/transfer-store";
 
 interface TransferListProps {
   sessions: TransferSession[];
+  onCancel: (sessionId: string) => void;
 }
 
 const statusConfig: Record<string, { label: string; color: string }> = {
@@ -15,7 +16,7 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   rejected: { label: "Rejected", color: "bg-yellow-500/20 text-yellow-400" },
 };
 
-export function TransferList({ sessions }: TransferListProps) {
+export function TransferList({ sessions, onCancel }: TransferListProps) {
   const removeSession = useTransferStore((s) => s.removeSession);
 
   if (sessions.length === 0) return null;
@@ -32,7 +33,7 @@ export function TransferList({ sessions }: TransferListProps) {
             key={session.id}
             className="glass rounded-2xl p-4 relative group"
           >
-            {isFinished && (
+            {isFinished ? (
               <button
                 onClick={() => removeSession(session.id)}
                 className="absolute top-3 right-3 p-1.5 rounded-lg bg-[var(--card)] opacity-0 group-hover:opacity-100 transition-opacity text-[var(--muted)] hover:text-[var(--danger)]"
@@ -41,6 +42,14 @@ export function TransferList({ sessions }: TransferListProps) {
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
+              </button>
+            ) : (
+              <button
+                onClick={() => onCancel(session.id)}
+                className="absolute top-3 right-3 p-1 text-xs rounded-md bg-[var(--danger)]/10 text-[var(--danger)] hover:bg-[var(--danger)] hover:text-white transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100"
+                title="Cancel transfer"
+              >
+                Cancel
               </button>
             )}
             

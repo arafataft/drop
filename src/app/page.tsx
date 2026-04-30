@@ -38,7 +38,7 @@ export default function Home() {
   const sessions = Array.from(sessionsMap.values());
   const peerArray = Array.from(peers.values());
 
-  const { send, receive, setFileSelectCallback } = useFileTransfer();
+  const { send, receive, setFileSelectCallback, cancel } = useFileTransfer();
 
   const handleOffer = useCallback(
     (offer: Extract<WsServerMessage, { type: "OFFER" }>) => {
@@ -187,7 +187,7 @@ export default function Home() {
         {/* Transfers */}
         {sessions.length > 0 && (
           <section>
-            <TransferList sessions={sessions} />
+            <TransferList sessions={sessions} onCancel={cancel} />
           </section>
         )}
       </main>

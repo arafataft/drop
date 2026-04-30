@@ -26,6 +26,7 @@ interface UseFileTransferReturn {
   setPinPrompt: (prompt: string | null) => void;
   pinPrompt: string | null;
   setFileSelectCallback: (cb: ((files: FileDto[]) => Promise<string[]>) | null) => void;
+  cancel: (sessionId: string) => void;
 }
 
 export function useFileTransfer(): UseFileTransferReturn {
@@ -35,6 +36,19 @@ export function useFileTransfer(): UseFileTransferReturn {
   const pinPromptRef = useRef<string | null>(null);
   const pinResolveRef = useRef<((pin: string) => void) | null>(null);
   const fileSelectCbRef = useRef<((files: FileDto[]) => Promise<string[]>) | null>(null);
+  const controllersRef = useRef<Map<string, AbortController>>(new Map());
+
+  const cancel = useCallback(
+    (sessionId: string) => {
+      const controller = controllersRef.current.get(sessionId);
+      if (controller) {
+        controller.abort();
+        controllersRef.current.delete(sessionId);
+      }
+      updateSessionStatus(sessionId, "failed");
+    },
+    [updateSessionStatus]
+  );
 
   const setPinPrompt = useCallback((prompt: string | null) => {
     pinPromptRef.current = prompt;
@@ -73,6 +87,9 @@ export function useFileTransfer(): UseFileTransferReturn {
       }
 
       const sessionId = crypto.randomUUID();
+      const abortController = new AbortController();
+      controllersRef.current.set(sessionId, abortController);
+
       addSession({
         id: sessionId,
         peerId: targetId,
@@ -102,11 +119,14 @@ export function useFileTransfer(): UseFileTransferReturn {
               status: bytes >= total ? "completed" : "in-progress",
             });
           },
+          abortSignal: abortController.signal,
         });
         updateSessionStatus(sessionId, "completed");
       } catch (err) {
         console.error("Send failed:", err);
         updateSessionStatus(sessionId, "failed");
+      } finally {
+        controllersRef.current.delete(sessionId);
       }
     },
     [addSession, updateFileProgress, updateSessionStatus, pin]
@@ -121,6 +141,8 @@ export function useFileTransfer(): UseFileTransferReturn {
     }) => {
       const { signaling, offer, keyPair, peerAlias } = opts;
       const sessionId = offer.sessionId;
+      const abortController = new AbortController();
+      controllersRef.current.set(sessionId, abortController);
       let fileList: FileDto[] = [];
 
       try {
@@ -158,11 +180,14 @@ export function useFileTransfer(): UseFileTransferReturn {
               status: bytes >= total ? "completed" : "in-progress",
             });
           },
+          abortSignal: abortController.signal,
         });
         updateSessionStatus(sessionId, "completed");
       } catch (err) {
         console.error("Receive failed:", err);
         updateSessionStatus(sessionId, "failed");
+      } finally {
+        controllersRef.current.delete(sessionId);
       }
     },
     [pin, updateFileProgress, updateSessionStatus]
@@ -175,5 +200,6 @@ export function useFileTransfer(): UseFileTransferReturn {
     setPinPrompt,
     pinPrompt: pinPromptRef.current,
     setFileSelectCallback,
+    cancel,
   };
 }

@@ -61,6 +61,7 @@ interface SendFilesOptions {
   pin?: string;
   onPin?: () => Promise<string>;
   onFileProgress?: (sessionId: string, fileId: string, bytesTransferred: number, total: number) => void;
+  abortSignal?: AbortSignal;
 }
 
 export async function sendFiles(options: SendFilesOptions): Promise<void> {
@@ -75,11 +76,22 @@ export async function sendFiles(options: SendFilesOptions): Promise<void> {
     pin,
     onPin,
     onFileProgress,
+    abortSignal,
   } = options;
 
   const pc = createPeerConnection(stunServers);
   const dc = pc.createDataChannel("localsend", { ordered: true });
   const sessionId = crypto.randomUUID();
+
+  if (abortSignal?.aborted) {
+    pc.close();
+    throw new Error("Transfer cancelled");
+  }
+
+  const onAbort = () => {
+    pc.close();
+  };
+  abortSignal?.addEventListener("abort", onAbort);
 
   // Create offer
   const offer = await pc.createOffer();
@@ -152,13 +164,16 @@ export async function sendFiles(options: SendFilesOptions): Promise<void> {
       const file = fileMap.get(fileDto.id);
       if (!file) continue;
 
-      const buffer = await file.arrayBuffer();
-      const totalChunks = Math.ceil(buffer.byteLength / CHUNK_SIZE);
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
       for (let i = 0; i < totalChunks; i++) {
+        if (abortSignal?.aborted) throw new Error("Transfer cancelled");
+
         const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, buffer.byteLength);
-        const chunk = buffer.slice(start, end);
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const chunkBlob = file.slice(start, end);
+        const chunk = await chunkBlob.arrayBuffer();
+        
         await sendChunks(dc, chunk);
 
         onFileProgress?.(sessionId, fileDto.id, end, fileDto.size);
@@ -172,7 +187,13 @@ export async function sendFiles(options: SendFilesOptions): Promise<void> {
 
     // Step 9: Send completion status
     dc.send(JSON.stringify({ type: "file-status", status: "finished" } as RtcFileStatusMessage));
+  } catch (err) {
+    if (abortSignal?.aborted) {
+      throw new Error("Transfer cancelled");
+    }
+    throw err;
   } finally {
+    abortSignal?.removeEventListener("abort", onAbort);
     pc.close();
   }
 }
@@ -187,6 +208,7 @@ interface ReceiveFilesOptions {
   onPin?: () => Promise<string>;
   selectFiles: (files: FileDto[]) => Promise<string[]>;
   onFileProgress?: (sessionId: string, fileId: string, bytesTransferred: number, total: number) => void;
+  abortSignal?: AbortSignal;
 }
 
 export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> {
@@ -199,10 +221,21 @@ export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> 
     onPin,
     selectFiles,
     onFileProgress,
+    abortSignal,
   } = options;
 
   const pc = createPeerConnection(stunServers);
   const sessionId = offer.sessionId;
+
+  if (abortSignal?.aborted) {
+    pc.close();
+    throw new Error("Transfer cancelled");
+  }
+
+  const onAbort = () => {
+    pc.close();
+  };
+  abortSignal?.addEventListener("abort", onAbort);
 
   // Set up data channel promise BEFORE setting remote description
   const dcPromise = new Promise<RTCDataChannel>((resolve, reject) => {
@@ -319,6 +352,9 @@ export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> 
 
       const blob = new Blob(chunks, { type: fileInfo.mimeType });
       saveFileFromBlob(blob, fileInfo.name);
+      
+      // Clear chunks from memory to help Garbage Collection
+      chunks.length = 0;
 
       onFileProgress?.(sessionId, fileInfo.id, fileInfo.size, fileInfo.size);
     }
@@ -328,7 +364,13 @@ export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> 
     if (statusMsg.type === "file-status" && statusMsg.status === "error") {
       throw new Error(statusMsg.message || "Remote error during transfer");
     }
+  } catch (err) {
+    if (abortSignal?.aborted) {
+      throw new Error("Transfer cancelled");
+    }
+    throw err;
   } finally {
+    abortSignal?.removeEventListener("abort", onAbort);
     pc.close();
   }
 }
