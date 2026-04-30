@@ -29,9 +29,17 @@ function createPeerConnection(stunServers: string[]): RTCPeerConnection {
 
 function waitForICEGathering(pc: RTCPeerConnection): Promise<void> {
   if (pc.iceGatheringState === "complete") return Promise.resolve();
+  
   return new Promise((resolve) => {
+    // Timeout after 2 seconds to proceed with whatever candidates we have (local network usually gathers instantly)
+    const timeout = setTimeout(() => {
+      pc.onicegatheringstatechange = null;
+      resolve();
+    }, 2000);
+
     pc.onicegatheringstatechange = () => {
       if (pc.iceGatheringState === "complete") {
+        clearTimeout(timeout);
         pc.onicegatheringstatechange = null;
         resolve();
       }
@@ -105,14 +113,35 @@ export async function sendFiles(options: SendFilesOptions): Promise<void> {
   signaling.send({ type: "OFFER", sessionId, target: targetId, sdp });
 
   // Wait for answer
-  const answer = await signaling.waitForAnswer(sessionId);
+  const answer = await Promise.race([
+    signaling.waitForAnswer(sessionId),
+    new Promise<never>((_, reject) => {
+      if (abortSignal?.aborted) reject(new Error("Transfer cancelled"));
+      abortSignal?.addEventListener("abort", () => reject(new Error("Transfer cancelled")));
+    })
+  ]);
   const remoteSdp = decodeSdp(answer.sdp, "answer");
   await pc.setRemoteDescription(remoteSdp);
 
   // Wait for data channel to open
   await new Promise<void>((resolve, reject) => {
-    dc.onopen = () => resolve();
-    dc.onerror = (e) => reject(new Error(`DataChannel error: ${e}`));
+    if (abortSignal?.aborted) return reject(new Error("Transfer cancelled"));
+    const abortHandler = () => reject(new Error("Transfer cancelled"));
+    abortSignal?.addEventListener("abort", abortHandler);
+
+    if (dc.readyState === "open") {
+      abortSignal?.removeEventListener("abort", abortHandler);
+      resolve();
+      return;
+    }
+    dc.onopen = () => {
+      abortSignal?.removeEventListener("abort", abortHandler);
+      resolve();
+    };
+    dc.onerror = (e) => {
+      abortSignal?.removeEventListener("abort", abortHandler);
+      reject(new Error(`DataChannel error: ${e}`));
+    };
   });
 
   const stream = createStreamController(dc);
@@ -239,8 +268,18 @@ export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> 
 
   // Set up data channel promise BEFORE setting remote description
   const dcPromise = new Promise<RTCDataChannel>((resolve, reject) => {
-    pc.ondatachannel = (event) => resolve(event.channel);
-    setTimeout(() => reject(new Error("Timeout waiting for data channel")), 30000);
+    if (abortSignal?.aborted) return reject(new Error("Transfer cancelled"));
+    const abortHandler = () => reject(new Error("Transfer cancelled"));
+    abortSignal?.addEventListener("abort", abortHandler);
+
+    pc.ondatachannel = (event) => {
+      abortSignal?.removeEventListener("abort", abortHandler);
+      resolve(event.channel);
+    };
+    setTimeout(() => {
+      abortSignal?.removeEventListener("abort", abortHandler);
+      reject(new Error("Timeout waiting for data channel"));
+    }, 30000);
   });
 
   // Set remote offer
@@ -263,12 +302,23 @@ export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> 
 
   // Wait for data channel to open
   await new Promise<void>((resolve, reject) => {
+    if (abortSignal?.aborted) return reject(new Error("Transfer cancelled"));
+    const abortHandler = () => reject(new Error("Transfer cancelled"));
+    abortSignal?.addEventListener("abort", abortHandler);
+
     if (dc.readyState === "open") {
+      abortSignal?.removeEventListener("abort", abortHandler);
       resolve();
       return;
     }
-    dc.onopen = () => resolve();
-    dc.onerror = (e) => reject(new Error(`DataChannel error: ${e}`));
+    dc.onopen = () => {
+      abortSignal?.removeEventListener("abort", abortHandler);
+      resolve();
+    };
+    dc.onerror = (e) => {
+      abortSignal?.removeEventListener("abort", abortHandler);
+      reject(new Error(`DataChannel error: ${e}`));
+    };
   });
 
   const stream = createStreamController(dc);

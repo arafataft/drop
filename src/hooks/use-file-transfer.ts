@@ -90,14 +90,25 @@ export function useFileTransfer(): UseFileTransferReturn {
       const abortController = new AbortController();
       controllersRef.current.set(sessionId, abortController);
 
+      const initialProgress = new Map<string, any>();
+      fileDtoList.forEach((f) => {
+        initialProgress.set(f.id, {
+          fileId: f.id,
+          fileName: f.name,
+          fileSize: f.size,
+          bytesTransferred: 0,
+          status: "in-progress",
+        });
+      });
+
       addSession({
         id: sessionId,
         peerId: targetId,
         peerAlias: targetAlias,
         direction: "sending",
-        status: "in-progress",
+        status: "waiting-for-accept",
         files: fileDtoList,
-        fileProgress: new Map(),
+        fileProgress: initialProgress,
         createdAt: Date.now(),
       });
 

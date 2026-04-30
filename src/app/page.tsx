@@ -20,6 +20,7 @@ import type { WsServerMessage } from "@/types/signaling";
 export default function Home() {
   const [selectedPeer, setSelectedPeer] = useState<ClientInfo | null>(null);
   const [sessionPrompt, setSessionPrompt] = useState<{
+    sessionId: string;
     peerAlias: string;
     files: FileDto[];
     resolve: (fileIds: string[]) => void;
@@ -39,6 +40,17 @@ export default function Home() {
   const peerArray = Array.from(peers.values());
 
   const { send, receive, setFileSelectCallback, cancel } = useFileTransfer();
+
+  // Auto-dismiss session prompt if the session is cancelled or finishes
+  useEffect(() => {
+    if (sessionPrompt) {
+      const session = sessionsMap.get(sessionPrompt.sessionId);
+      if (!session || session.status !== "in-progress") {
+        sessionPrompt.resolve([]);
+        setSessionPrompt(null);
+      }
+    }
+  }, [sessionsMap, sessionPrompt]);
 
   const handleOffer = useCallback(
     (offer: Extract<WsServerMessage, { type: "OFFER" }>) => {
@@ -83,7 +95,11 @@ export default function Home() {
         // Find the most recent receiving session that is in-progress
         const session = sessions.reverse().find(s => s.direction === "receiving" && s.status === "in-progress");
         const peerAlias = session?.peerAlias ?? "Peer";
-        setSessionPrompt({ peerAlias, files, resolve });
+        if (session) {
+          setSessionPrompt({ sessionId: session.id, peerAlias, files, resolve });
+        } else {
+          resolve([]);
+        }
       });
     });
   }, [setFileSelectCallback]);
