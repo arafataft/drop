@@ -2,6 +2,7 @@
 
 import type { TransferSession } from "@/types/transfer";
 import { FileProgress } from "./FileProgress";
+import { useTransferStore } from "@/store/transfer-store";
 
 interface TransferListProps {
   sessions: TransferSession[];
@@ -15,6 +16,8 @@ const statusConfig: Record<string, { label: string; color: string }> = {
 };
 
 export function TransferList({ sessions }: TransferListProps) {
+  const removeSession = useTransferStore((s) => s.removeSession);
+
   if (sessions.length === 0) return null;
 
   return (
@@ -22,12 +25,26 @@ export function TransferList({ sessions }: TransferListProps) {
       <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Transfers</h3>
       {sessions.map((session) => {
         const status = statusConfig[session.status] ?? statusConfig["in-progress"];
+        const isFinished = session.status !== "in-progress" && session.status !== "waiting-for-accept" && session.status !== "waiting-for-pin";
+        
         return (
           <div
             key={session.id}
-            className="glass rounded-2xl p-4"
+            className="glass rounded-2xl p-4 relative group"
           >
-            <div className="flex items-center justify-between mb-3">
+            {isFinished && (
+              <button
+                onClick={() => removeSession(session.id)}
+                className="absolute top-3 right-3 p-1.5 rounded-lg bg-[var(--card)] opacity-0 group-hover:opacity-100 transition-opacity text-[var(--muted)] hover:text-[var(--danger)]"
+                title="Clear transfer"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+            
+            <div className="flex items-center justify-between mb-3 pr-8">
               <div className="flex items-center gap-2 text-sm text-[var(--foreground)]">
                 <span className="text-[var(--muted)]">
                   {session.direction === "sending" ? "To" : "From"}

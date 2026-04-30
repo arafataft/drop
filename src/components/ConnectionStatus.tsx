@@ -3,9 +3,10 @@
 interface ConnectionStatusProps {
   isConnected: boolean;
   onReconnect: () => void;
+  peerCount: number;
 }
 
-export function ConnectionStatus({ isConnected, onReconnect }: ConnectionStatusProps) {
+export function ConnectionStatus({ isConnected, onReconnect, peerCount }: ConnectionStatusProps) {
   return (
     <button
       onClick={onReconnect}
@@ -18,7 +19,7 @@ export function ConnectionStatus({ isConnected, onReconnect }: ConnectionStatusP
         }`}
       />
       <span className="text-xs text-[var(--muted)] hidden sm:inline">
-        {isConnected ? "Connected" : "Offline"}
+        {isConnected ? `Connected (${peerCount})` : "Offline"}
       </span>
       <svg
         className="w-3.5 h-3.5 text-[var(--muted)] group-hover:text-[var(--foreground)] transition-colors"

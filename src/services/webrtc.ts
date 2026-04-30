@@ -204,8 +204,8 @@ export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> 
   const pc = createPeerConnection(stunServers);
   const sessionId = offer.sessionId;
 
-  // Wait for data channel from remote
-  const dc = await new Promise<RTCDataChannel>((resolve, reject) => {
+  // Set up data channel promise BEFORE setting remote description
+  const dcPromise = new Promise<RTCDataChannel>((resolve, reject) => {
     pc.ondatachannel = (event) => resolve(event.channel);
     setTimeout(() => reject(new Error("Timeout waiting for data channel")), 30000);
   });
@@ -226,8 +226,14 @@ export async function receiveFiles(options: ReceiveFilesOptions): Promise<void> 
     sdp: encodeSdp(pc.localDescription!),
   });
 
+  const dc = await dcPromise;
+
   // Wait for data channel to open
   await new Promise<void>((resolve, reject) => {
+    if (dc.readyState === "open") {
+      resolve();
+      return;
+    }
     dc.onopen = () => resolve();
     dc.onerror = (e) => reject(new Error(`DataChannel error: ${e}`));
   });

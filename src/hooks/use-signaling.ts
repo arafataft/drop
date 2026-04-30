@@ -10,7 +10,7 @@ import {
   generateClientToken,
   getFingerprint,
 } from "@/services/crypto";
-import type { ClientInfoWithoutId, PeerDeviceType } from "@/types/peer";
+import type { ClientInfoWithoutId, ClientInfo, PeerDeviceType } from "@/types/peer";
 import type { WsServerMessage } from "@/types/signaling";
 import { PROTOCOL_VERSION } from "@/lib/constants";
 
@@ -23,7 +23,9 @@ interface UseSignalingReturn {
 }
 
 export function useSignaling(
-  onOffer?: (offer: Extract<WsServerMessage, { type: "OFFER" }>) => void
+  onOffer?: (offer: Extract<WsServerMessage, { type: "OFFER" }>) => void,
+  onJoin?: (peer: ClientInfo) => void,
+  onLeft?: (peer: ClientInfo) => void
 ): UseSignalingReturn {
   const signalingRef = useRef<SignalingConnection | null>(null);
   const keyPairRef = useRef<CryptoKeyPair | null>(null);
@@ -88,10 +90,14 @@ export function useSignaling(
               break;
             case "JOIN":
               addPeer(message.peer);
+              onJoin?.(message.peer);
               break;
-            case "LEFT":
+            case "LEFT": {
+              const peer = usePeerStore.getState().peers.get(message.peerId);
+              if (peer) onLeft?.(peer);
               removePeer(message.peerId);
               break;
+            }
             case "UPDATE":
               updatePeer(message.peer);
               break;
@@ -124,7 +130,7 @@ export function useSignaling(
       setConnectionError(message);
       setConnected(false);
     }
-  }, [buildClientInfo, setSelfId, setSelfInfo, setConnected, addPeer, removePeer, updatePeer, setPeers, clearPeers, onOffer]);
+  }, [buildClientInfo, setSelfId, setSelfInfo, setConnected, addPeer, removePeer, updatePeer, setPeers, clearPeers, onOffer, onJoin, onLeft]);
 
   const disconnect = useCallback(() => {
     signalingRef.current?.close();

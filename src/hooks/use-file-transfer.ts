@@ -20,6 +20,7 @@ interface UseFileTransferReturn {
     signaling: SignalingConnection;
     offer: Extract<WsServerMessage, { type: "OFFER" }>;
     keyPair: CryptoKeyPair;
+    peerAlias: string;
   }) => Promise<void>;
   pendingOffer: React.MutableRefObject<Extract<WsServerMessage, { type: "OFFER" }> | null>;
   setPinPrompt: (prompt: string | null) => void;
@@ -116,9 +117,11 @@ export function useFileTransfer(): UseFileTransferReturn {
       signaling: SignalingConnection;
       offer: Extract<WsServerMessage, { type: "OFFER" }>;
       keyPair: CryptoKeyPair;
+      peerAlias: string;
     }) => {
-      const { signaling, offer, keyPair } = opts;
+      const { signaling, offer, keyPair, peerAlias } = opts;
       const sessionId = offer.sessionId;
+      let fileList: FileDto[] = [];
 
       try {
         await receiveFiles({
@@ -128,6 +131,17 @@ export function useFileTransfer(): UseFileTransferReturn {
           publicKeyPem: "",
           pin: pin || undefined,
           selectFiles: async (files) => {
+            fileList = files;
+            addSession({
+              id: sessionId,
+              peerId: offer.target,
+              peerAlias,
+              direction: "receiving",
+              status: "in-progress",
+              files,
+              fileProgress: new Map(),
+              createdAt: Date.now(),
+            });
             if (fileSelectCbRef.current) {
               return fileSelectCbRef.current(files);
             }
@@ -135,9 +149,10 @@ export function useFileTransfer(): UseFileTransferReturn {
             return files.map((f) => f.id);
           },
           onFileProgress: (sid, fileId, bytes, total) => {
+            const fileName = fileList.find((f) => f.id === fileId)?.name ?? "";
             updateFileProgress(sid, {
               fileId,
-              fileName: "",
+              fileName,
               fileSize: total,
               bytesTransferred: bytes,
               status: bytes >= total ? "completed" : "in-progress",

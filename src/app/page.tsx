@@ -6,6 +6,7 @@ import { useFileTransfer } from "@/hooks/use-file-transfer";
 import { usePeerStore } from "@/store/peer-store";
 import { useTransferStore } from "@/store/transfer-store";
 import { useSettingsStore } from "@/store/settings-store";
+import { useToastStore } from "@/store/toast-store";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { DeviceAliasInput } from "@/components/DeviceAliasInput";
 import { PeerList } from "@/components/PeerList";
@@ -18,13 +19,14 @@ import type { WsServerMessage } from "@/types/signaling";
 
 export default function Home() {
   const [selectedPeer, setSelectedPeer] = useState<ClientInfo | null>(null);
-  const [incomingOffer, setIncomingOffer] = useState<{
-    offer: Extract<WsServerMessage, { type: "OFFER" }>;
+  const [sessionPrompt, setSessionPrompt] = useState<{
     peerAlias: string;
+    files: FileDto[];
+    resolve: (fileIds: string[]) => void;
   } | null>(null);
-  const [incomingFiles, setIncomingFiles] = useState<FileDto[]>([]);
 
-  const { alias, setAlias } = useSettingsStore();
+  const { alias, setAlias, _hasHydrated } = useSettingsStore();
+  const { addToast } = useToastStore();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -36,25 +38,55 @@ export default function Home() {
   const sessions = Array.from(sessionsMap.values());
   const peerArray = Array.from(peers.values());
 
+  const { send, receive, setFileSelectCallback } = useFileTransfer();
+
   const handleOffer = useCallback(
     (offer: Extract<WsServerMessage, { type: "OFFER" }>) => {
-      const peer = peers.get(offer.target);
-      setIncomingOffer({
+      const peer = usePeerStore.getState().peers.get(offer.target);
+      const peerAlias = peer?.alias ?? "Unknown Peer";
+      addToast(`📥 ${peerAlias} wants to send you files`, "info");
+      
+      if (!signalingRef.current || !keyPairRef.current) return;
+      receive({
+        signaling: signalingRef.current,
         offer,
-        peerAlias: peer?.alias ?? "Unknown Peer",
-      });
+        keyPair: keyPairRef.current,
+        peerAlias,
+      }).catch(console.error);
     },
-    [peers]
+    [receive, addToast]
   );
 
-  const { connect, disconnect, signalingRef, keyPairRef } = useSignaling(handleOffer);
-  const { send, receive } = useFileTransfer();
+  const handleJoin = useCallback((peer: ClientInfo) => {
+    addToast(`🟢 ${peer.alias} joined the room`, "success");
+  }, [addToast]);
 
-  // Auto-connect once on mount
+  const handleLeft = useCallback((peer: ClientInfo) => {
+    addToast(`🔴 ${peer.alias} left the room`, "info");
+  }, [addToast]);
+
+  const { connect, disconnect, signalingRef, keyPairRef } = useSignaling(handleOffer, handleJoin, handleLeft);
+
+  // Auto-connect once on mount, but only after hydration
   useEffect(() => {
-    connect().catch(() => {});
+    if (_hasHydrated) {
+      connect().catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [_hasHydrated]);
+
+  // Setup file select callback
+  useEffect(() => {
+    setFileSelectCallback((files) => {
+      return new Promise<string[]>((resolve) => {
+        const sessions = Array.from(useTransferStore.getState().sessions.values());
+        // Find the most recent receiving session that is in-progress
+        const session = sessions.reverse().find(s => s.direction === "receiving" && s.status === "in-progress");
+        const peerAlias = session?.peerAlias ?? "Peer";
+        setSessionPrompt({ peerAlias, files, resolve });
+      });
+    });
+  }, [setFileSelectCallback]);
 
   const handleReconnect = useCallback(async () => {
     disconnect();
@@ -84,22 +116,17 @@ export default function Home() {
   );
 
   const handleAcceptIncoming = useCallback(
-    async (_fileIds: string[]) => {
-      if (!incomingOffer || !signalingRef.current || !keyPairRef.current) return;
-      setIncomingOffer(null);
-
-      await receive({
-        signaling: signalingRef.current,
-        offer: incomingOffer.offer,
-        keyPair: keyPairRef.current,
-      });
+    (fileIds: string[]) => {
+      sessionPrompt?.resolve(fileIds);
+      setSessionPrompt(null);
     },
-    [incomingOffer, receive, signalingRef, keyPairRef]
+    [sessionPrompt]
   );
 
   const handleRejectIncoming = useCallback(() => {
-    setIncomingOffer(null);
-  }, []);
+    sessionPrompt?.resolve([]);
+    setSessionPrompt(null);
+  }, [sessionPrompt]);
 
   return (
     <div className="flex flex-col min-h-svh relative">
@@ -121,7 +148,7 @@ export default function Home() {
 
           <div className="flex items-center gap-3">
             <DeviceAliasInput alias={mounted ? alias : ""} onAliasChange={setAlias} />
-            <ConnectionStatus isConnected={isConnected} onReconnect={handleReconnect} />
+            <ConnectionStatus isConnected={isConnected} onReconnect={handleReconnect} peerCount={peerArray.length} />
           </div>
         </div>
       </header>
@@ -173,10 +200,10 @@ export default function Home() {
       </footer>
 
       {/* Incoming transfer dialog */}
-      {incomingOffer && (
+      {sessionPrompt && (
         <SessionDialog
-          peerAlias={incomingOffer.peerAlias}
-          files={incomingFiles.length > 0 ? incomingFiles : []}
+          peerAlias={sessionPrompt.peerAlias}
+          files={sessionPrompt.files}
           onAccept={handleAcceptIncoming}
           onReject={handleRejectIncoming}
         />
