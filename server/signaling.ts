@@ -1,3 +1,4 @@
+import { createServer } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 
 const PORT = parseInt(process.env.PORT || "8080", 10);
@@ -45,7 +46,17 @@ function removeClient(id: string): void {
   broadcast(id, { type: "LEFT", peerId: id });
 }
 
-const wss = new WebSocketServer({ port: PORT });
+const server = createServer((req, res) => {
+  // Simple health check endpoint so cloud providers don't kill the container
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Signaling Server OK");
+});
+
+const wss = new WebSocketServer({ server });
+
+server.listen(PORT, () => {
+  console.log(`HTTP/WebSocket Server listening on port ${PORT}`);
+});
 
 wss.on("connection", (ws, req) => {
   let clientId = "";
