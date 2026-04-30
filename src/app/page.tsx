@@ -47,7 +47,7 @@ export default function Home() {
     [peers]
   );
 
-  const { connect, disconnect, signalingRef, keyPairRef, connectionError } = useSignaling(handleOffer);
+  const { connect, disconnect, signalingRef, keyPairRef } = useSignaling(handleOffer);
   const { send, receive } = useFileTransfer();
 
   // Auto-connect once on mount
@@ -128,19 +128,6 @@ export default function Home() {
 
       {/* Main content */}
       <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-6 space-y-6 relative z-10">
-        {/* Error */}
-        {connectionError && (
-          <div className="glass p-4 rounded-2xl border-[var(--danger)]/30 animate-fade-in">
-            <p className="text-sm font-medium text-[var(--danger)]">{connectionError}</p>
-            <button
-              onClick={handleReconnect}
-              className="mt-2 text-xs px-3 py-1.5 rounded-lg border border-[var(--danger)]/30 text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-colors font-medium"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
         {/* File picker (when peer selected) */}
         {selectedPeer && (
           <section className="animate-fade-in">
